@@ -18,24 +18,44 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Extract RAR and fix folders
+    - name: Extract RAR and fix project
       run: |
         sudo apt-get update && sudo apt-get install -y unrar
         unrar x -o+ TimingTracker.rar
-        # Исправляем путь к java, если она распаковалась в src/java
+        
+        # Исправляем путь к исходникам
         if [ -d "TimingTracker/src/java" ]; then
           mkdir -p TimingTracker/src/main
           mv TimingTracker/src/java TimingTracker/src/main/
         fi
 
+        # Подключаем стабильную версию Loom и репозитории плагинов
+        cat << 'EOF' > TimingTracker/settings.gradle
+        pluginManagement {
+            repositories {
+                maven {
+                    name = 'Fabric'
+                    url = 'https://maven.fabricmc.net/'
+                }
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        rootProject.name = 'TimingTracker'
+        EOF
+
+        # Фиксируем стабильный плагин в build.gradle
+        sed -i "s/loom_version/loom_version = '1.7-SNAPSHOT'/g" TimingTracker/gradle.properties || true
+        sed -i "s/1.8-SNAPSHOT/1.7-SNAPSHOT/g" TimingTracker/gradle.properties || true
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: 8.10.2
 
     - name: Build Mod with Gradle
       working-directory: TimingTracker
-      run: |
-        chmod +x gradlew || true
-        gradle build
+      run: gradle build --no-daemon
 
     - name: Upload Mod Jar
       uses: actions/upload-artifact@v4
