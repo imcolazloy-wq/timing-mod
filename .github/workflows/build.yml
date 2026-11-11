@@ -18,24 +18,24 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Extract RAR and fix project
+    - name: Extract RAR and configure project
       run: |
         sudo apt-get update && sudo apt-get install -y unrar
         unrar x -o+ TimingTracker.rar
         
-        # Исправляем путь к исходникам
+        # Перемещаем исходники в правильное место src/main/java
         if [ -d "TimingTracker/src/java" ]; then
           mkdir -p TimingTracker/src/main
           mv TimingTracker/src/java TimingTracker/src/main/
         fi
 
-        # Подключаем стабильную версию Loom и репозитории плагинов
+        # 1. Перезаписываем settings.gradle
         cat << 'EOF' > TimingTracker/settings.gradle
         pluginManagement {
             repositories {
                 maven {
                     name = 'Fabric'
-                    url = 'https://maven.fabricmc.net/'
+                    url = 'https://fabricmc.net'
                 }
                 mavenCentral()
                 gradlePluginPortal()
@@ -44,9 +44,53 @@ jobs:
         rootProject.name = 'TimingTracker'
         EOF
 
-        # Фиксируем стабильный плагин в build.gradle
-        sed -i "s/loom_version/loom_version = '1.7-SNAPSHOT'/g" TimingTracker/gradle.properties || true
-        sed -i "s/1.8-SNAPSHOT/1.7-SNAPSHOT/g" TimingTracker/gradle.properties || true
+        # 2. Перезаписываем gradle.properties чистыми значениями
+        cat << 'EOF' > TimingTracker/gradle.properties
+        org.gradle.jvmargs=-Xmx2G
+        minecraft_version=1.21.1
+        yarn_mappings=1.21.1+build.3
+        loader_version=0.16.9
+        fabric_version=0.105.0+1.21.1
+        mod_version=1.0.0
+        maven_group=com.example.timingmod
+        archives_base_name=timing-trainer-mod
+        EOF
+
+        # 3. Перезаписываем build.gradle с точной рабочей версией плагина 1.7.4
+        cat << 'EOF' > TimingTracker/build.gradle
+        plugins {
+            id 'fabric-loom' version '1.7.4'
+            id 'maven-publish'
+        }
+
+        version = project.mod_version
+        group = project.maven_group
+
+        base {
+            archivesName = project.archives_base_name
+        }
+
+        repositories {
+            mavenCentral()
+        }
+
+        dependencies {
+            minecraft "com.mojang:minecraft:${project.minecraft_version}"
+            mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+            modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+            modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+            implementation include("com.googlecode.soundlibs:mp3spi:1.9.5.4")
+            implementation include("com.googlecode.soundlibs:jlayer:1.0.1.4")
+            implementation include("com.googlecode.soundlibs:tritonus-share:0.3.7.4")
+        }
+
+        java {
+            withSourcesJar()
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
+        }
+        EOF
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
